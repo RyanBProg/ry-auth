@@ -1,18 +1,20 @@
 {
   "name": "ry-auth",
   "version": "1.0.0",
-  "description": "",
+  "description": "Helpful auth utility",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node src/example.ts",
+    "dev": "ts-node src/index.ts",
+    "lint": "biome lint --write",
     "build": "tsup",
     "test": "vitest"
   },
   "keywords": [],
-  "author": "",
+  "author": "Ryan Bowler",
   "license": "ISC",
   "packageManager": "pnpm@10.23.0",
   "devDependencies": {
+    "@biomejs/biome": "2.3.7",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
