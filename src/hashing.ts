@@ -1,56 +1,43 @@
+import { randomBytes, scrypt, timingSafeEqual } from "crypto";
+import { promisify } from "util";
+
+const scryptAsync = promisify(scrypt);
+
 export class HashingService {
   async hashPassword(password: string): Promise<string> {
-    const enc = new TextEncoder();
-    const salt = crypto.randomUUID();
-    const key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
-
-    const derivedBits = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt: enc.encode(salt),
-        iterations: 310000,
-        hash: "SHA-256",
-      },
-      key,
-      256
-    );
-
-    const hash = Buffer.from(derivedBits).toString("base64");
-
-    return `${salt}:${hash}`;
+    if (!password) {
+      throw new Error("No password received.");
+    }
+    const salt = randomBytes(16).toString("hex");
+    const hashed = (await scryptAsync(password, salt, 64)) as Buffer;
+    return `${salt}:${hashed.toString("hex")}`;
   }
 
-  async verifyPassword(password: string, stored: string): Promise<boolean> {
-    const [salt, originalHash] = stored.split(":");
-    const enc = new TextEncoder();
+  async verifyPassword(
+    password: string,
+    storedPassword: string
+  ): Promise<boolean> {
+    if (!password) {
+      throw new Error("No password received.");
+    }
+    if (!storedPassword) {
+      throw new Error("No stored password provided.");
+    }
 
-    const key = await crypto.subtle.importKey(
-      "raw",
-      enc.encode(password),
-      "PBKDF2",
-      false,
-      ["deriveBits"]
-    );
+    const [salt, key] = storedPassword.split(":", 2);
+    if (!salt || !key) {
+      throw new Error(
+        "Received password hash format error. No salt and/or key provided."
+      );
+    }
 
-    const derivedBits = await crypto.subtle.deriveBits(
-      {
-        name: "PBKDF2",
-        salt: enc.encode(salt),
-        iterations: 310000,
-        hash: "SHA-256",
-      },
-      key,
-      256
-    );
+    const hashed = (await scryptAsync(password, salt, 64)) as Buffer;
 
-    const newHash = Buffer.from(derivedBits).toString("base64");
+    const keyBuffer = Buffer.from(key, "hex");
+    if (keyBuffer.length !== hashed.length) {
+      return false;
+    }
 
-    return newHash === originalHash;
+    return timingSafeEqual(hashed, keyBuffer);
   }
 }
