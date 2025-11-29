@@ -1,33 +1,47 @@
+import { type UserAdapter } from "./adapter";
+import { HashingService } from "./hashing";
+import { TokenService } from "./tokens";
+
 export class AuthService {
-  constructor(private users: UserAdapter, private hashing: HashingService) {}
+  constructor(
+    private users: UserAdapter,
+    private hashing: HashingService,
+    private token: TokenService
+  ) {}
 
   async register(email: string, password: string) {
     const existing = await this.users.findByEmail(email);
     if (existing) throw new Error("Email already in use");
 
-    const password = await this.hashing.hashpassword(password);
+    const hashedPassword = await this.hashing.hashPassword(password);
 
-    const user = await this.users.createUser({ email, password });
-    return user;
-    // create user
-    // create jwt
-    // return jwt
+    const user = await this.users.createUser({ email, hashedPassword });
+    const authToken = await this.token.createAccessToken({ id: user.id });
+    return { accessToken: authToken };
   }
 
   async login(email: string, password: string) {
-    // find user
-    // check password
-    // create jwt
-    // return jwt
+    const existing = await this.users.findByEmail(email);
+    if (!existing) throw new Error("No user found");
+
+    const isPasswordMatch = await this.hashing.verifyPassword(
+      password,
+      existing.hashedPassword
+    );
+
+    if (!isPasswordMatch) {
+      throw new Error("Incorrect Password");
+    }
+
+    const authToken = await this.token.createAccessToken({ id: existing.id });
+    return { accessToken: authToken };
   }
 
   async logout() {
     // delete jwt
   }
 
-  async isAuth() {
-    // check jwt
-  }
+  async isAuth(token: string) {}
 
   async refreshToken() {
     // check jwt

@@ -7,7 +7,7 @@ export class TokenService {
     this.secretKey = new TextEncoder().encode(secret);
   }
 
-  async createToken(payload: JWTPayload, expiresInSeconds = 60 * 60) {
+  async createAccessToken(payload: JWTPayload, expiresInSeconds = 60 * 60) {
     return await new SignJWT(payload)
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
