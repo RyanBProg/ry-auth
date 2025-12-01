@@ -1,16 +1,17 @@
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
+import bcrypt from "bcrypt";
 import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
 
 export class HashingService {
+  private readonly saltRounds = 12;
+
   async hashPassword(password: string): Promise<string> {
     if (!password) {
       throw new Error("No password received.");
     }
-    const salt = randomBytes(16).toString("hex");
-    const hashed = (await scryptAsync(password, salt, 64)) as Buffer;
-    return `${salt}:${hashed.toString("hex")}`;
+    return await bcrypt.hash(password, this.saltRounds);
   }
 
   async verifyPassword(
@@ -31,13 +32,6 @@ export class HashingService {
       );
     }
 
-    const hashed = (await scryptAsync(password, salt, 64)) as Buffer;
-
-    const keyBuffer = Buffer.from(key, "hex");
-    if (keyBuffer.length !== hashed.length) {
-      return false;
-    }
-
-    return timingSafeEqual(hashed, keyBuffer);
+    return bcrypt.compare(password, storedPassword);
   }
 }
