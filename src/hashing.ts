@@ -1,8 +1,4 @@
-import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import bcrypt from "bcrypt";
-import { promisify } from "util";
-
-const scryptAsync = promisify(scrypt);
 
 export class HashingService {
   private readonly saltRounds = 12;
@@ -23,13 +19,6 @@ export class HashingService {
     }
     if (!storedPassword) {
       throw new Error("No stored password provided.");
-    }
-
-    const [salt, key] = storedPassword.split(":", 2);
-    if (!salt || !key) {
-      throw new Error(
-        "Received password hash format error. No salt and/or key provided."
-      );
     }
 
     return bcrypt.compare(password, storedPassword);
