@@ -1,14 +1,18 @@
 import { type UserAdapter } from "./adapter";
 import { HashingService } from "./hashing";
 import { TokenService } from "./tokens";
-import { CookieService, type Request, type Response } from "./cookies";
+import { CookieService } from "./cookies";
+import { type NodeEnv, type Request, type Response } from "./types/cookies";
+import type { AuthTokenPayload } from "./types/tokens";
 
 export class AuthService {
   constructor(
     private users: UserAdapter,
     private hashing: HashingService,
     private token: TokenService,
-    private cookies: CookieService
+    private cookies: CookieService,
+    private readonly nodeEnv: NodeEnv,
+    private domain: string
   ) {}
 
   async register(email: string, password: string, res?: Response) {
@@ -18,18 +22,29 @@ export class AuthService {
     const hashedPassword = await this.hashing.hashPassword(password);
 
     const user = await this.users.createUser({ email, hashedPassword });
-    const accessToken = await this.token.createAccessToken({ id: user.id });
-    const refreshToken = await this.token.createAccessToken(
+    const accessToken = await this.token.createAccessToken({ id: user.id }, 15);
+    const refreshToken = await this.token.createRefreshToken(
       { id: user.id },
-      60 * 60 * 24 * 7 // 7 days
+      3
     );
 
     if (res) {
-      await this.cookies.setCookie(res, "refreshToken", refreshToken, {
+      await this.cookies.setCookie(res, "accessToken", accessToken, {
+        secure: this.nodeEnv === "prod",
         httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 60 * 60 * 24 * 7,
+        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        path: "/",
+        maxAge: 60 * 15,
+      });
+
+      await this.cookies.setCookie(res, "refreshToken", refreshToken, {
+        secure: this.nodeEnv === "prod",
+        httpOnly: true,
+        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        path: "/",
+        maxAge: 60 * 60 * 24 * 3,
       });
     }
 
@@ -49,18 +64,32 @@ export class AuthService {
       throw new Error("Incorrect Password");
     }
 
-    const accessToken = await this.token.createAccessToken({ id: existing.id });
-    const refreshToken = await this.token.createAccessToken(
+    const accessToken = await this.token.createAccessToken(
       { id: existing.id },
-      60 * 60 * 24 * 7 // 7 days
+      15
+    );
+    const refreshToken = await this.token.createRefreshToken(
+      { id: existing.id },
+      3
     );
 
     if (res) {
-      await this.cookies.setCookie(res, "refreshToken", refreshToken, {
+      await this.cookies.setCookie(res, "accessToken", accessToken, {
+        secure: this.nodeEnv === "prod",
         httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 60 * 60 * 24 * 7,
+        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        path: "/",
+        maxAge: 60 * 15,
+      });
+
+      await this.cookies.setCookie(res, "refreshToken", refreshToken, {
+        secure: this.nodeEnv === "prod",
+        httpOnly: true,
+        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        path: "/",
+        maxAge: 60 * 60 * 24 * 3,
       });
     }
 
@@ -68,18 +97,33 @@ export class AuthService {
   }
 
   async logout(res: Response) {
-    // Clear the refresh token cookie
-    await this.cookies.setCookie(res, "refreshToken", "", {
+    await this.cookies.setCookie(res, "accessToken", "", {
+      secure: this.nodeEnv === "prod",
       httpOnly: true,
-      secure: true,
-      sameSite: "Strict",
-      maxAge: 0, // Expire immediately
+      sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+      domain: this.nodeEnv === "prod" ? this.domain : undefined,
+      path: "/",
+      maxAge: 0,
+    });
+
+    await this.cookies.setCookie(res, "refreshToken", "", {
+      secure: this.nodeEnv === "prod",
+      httpOnly: true,
+      sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+      domain: this.nodeEnv === "prod" ? this.domain : undefined,
+      path: "/",
+      maxAge: 0,
     });
   }
 
-  async isAuth(token: string) {
+  async isAuth(req: Request) {
+    const accessToken = await this.cookies.getCookie(req, "accessToken");
+    if (!accessToken) {
+      throw new Error("No access token found");
+    }
+
     try {
-      const payload = await this.token.verifyToken(token);
+      const payload = await this.token.verifyAccessToken(accessToken);
       return {
         isValid: true,
         userId: payload.id,
@@ -92,36 +136,31 @@ export class AuthService {
     }
   }
 
-  async refreshToken(req: Request, res: Response) {
+  async refreshAccessToken(req: Request, res: Response) {
     const refreshToken = await this.cookies.getCookie(req, "refreshToken");
     if (!refreshToken) {
       throw new Error("No refresh token found");
     }
 
     try {
-      const payload = await this.token.verifyToken(refreshToken);
-
-      // Create new access token
+      const payload = (await this.token.verifyRefreshToken(
+        refreshToken
+      )) as AuthTokenPayload;
       const newAccessToken = await this.token.createAccessToken(
         { id: payload.id },
-        60 * 60 // 1 hour
+        15
       );
 
-      // Optionally create a new refresh token
-      const newRefreshToken = await this.token.createAccessToken(
-        { id: payload.id },
-        60 * 60 * 24 * 7 // 7 days
-      );
-
-      // Update the refresh token cookie
-      await this.cookies.setCookie(res, "refreshToken", newRefreshToken, {
+      await this.cookies.setCookie(res, "accessToken", newAccessToken, {
+        secure: this.nodeEnv === "prod",
         httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 60 * 60 * 24 * 7,
+        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
+        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        path: "/",
+        maxAge: 60 * 15,
       });
 
-      return { accessToken: newAccessToken, refreshToken: newRefreshToken };
+      return { accessToken: newAccessToken };
     } catch {
       throw new Error("Invalid or expired refresh token");
     }

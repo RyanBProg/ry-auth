@@ -10,8 +10,9 @@ A lightweight, framework-agnostic authentication module for Node.js applications
 - 🔄 **Token Refresh** - Automatic access token refresh using refresh tokens
 - 🛡️ **Password Hashing** - Industry-standard bcrypt password hashing
 - 🚀 **Framework Agnostic** - Works with Express, Fastify, Hono, or any Node.js framework
-- 📦 **Lightweight** - Minimal dependencies (only uses `jose` for JWT)
+- 📦 **Lightweight** - Minimal dependencies (only uses `jose` and `bcrypt`)
 - ✅ **Fully Typed** - Complete TypeScript support with strict type safety
+- 🔌 **Pluggable User Adapter** - Easy to swap between in-memory and database adapters
 
 ## Installation
 
@@ -31,7 +32,11 @@ yarn add ry-auth
 import { createAuth } from "ry-auth";
 
 const auth = createAuth({
-  jwtSecret: process.env.JWT_SECRET || "your-secret-key",
+  jwtAccessTokenSecret: process.env.JWT_ACCESS_SECRET || "your-access-secret",
+  jwtRefreshTokenSecret:
+    process.env.JWT_REFRESH_SECRET || "your-refresh-secret",
+  nodeEnv: "dev",
+  userAdapter: new MemoryUserAdapter(), // optional, uses in-memory by default
 });
 ```
 
@@ -58,7 +63,7 @@ const { accessToken, refreshToken } = await auth.login(
 ### Check Authentication
 
 ```typescript
-const { isValid, userId } = await auth.isAuth(accessToken);
+const { isValid, userId } = await auth.isAuth(req);
 
 if (isValid) {
   console.log(`User authenticated: ${userId}`);
@@ -68,8 +73,7 @@ if (isValid) {
 ### Refresh Token
 
 ```typescript
-const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
-  await auth.refreshToken(req, res);
+const { accessToken: newAccessToken } = await auth.refreshAccessToken(req, res);
 ```
 
 ### Logout
@@ -86,8 +90,11 @@ Factory function to create an AuthService instance.
 
 **Options:**
 
-- `jwtSecret` (required): Secret key for JWT signing
-- `userAdapter` (optional): Custom user adapter (defaults to in-memory storage)
+- `jwtAccessTokenSecret` (required): Secret key for JWT access token signing
+- `jwtRefreshTokenSecret` (required): Secret key for JWT refresh token signing
+- `nodeEnv` (required): Environment - `"prod"` or `"dev"`
+- `userAdapter` (optional): Custom user adapter (defaults to `MemoryUserAdapter`)
+- `domain` (required if `nodeEnv` is `"prod"`): Domain for secure cookies
 
 **Returns:** `AuthService` instance
 
@@ -100,7 +107,7 @@ Registers a new user with email and password.
 - **Parameters:**
   - `email` (string): User email address
   - `password` (string): User password
-  - `res` (Response, optional): Response object to set refresh token cookie
+  - `res` (Response, optional): Response object to set cookies
 - **Returns:** `{ accessToken: string, refreshToken: string }`
 - **Throws:** Error if email already exists
 
@@ -111,31 +118,31 @@ Authenticates user with email and password.
 - **Parameters:**
   - `email` (string): User email address
   - `password` (string): User password
-  - `res` (Response, optional): Response object to set refresh token cookie
+  - `res` (Response, optional): Response object to set cookies
 - **Returns:** `{ accessToken: string, refreshToken: string }`
 - **Throws:** Error if user not found or password incorrect
 
-#### `isAuth(token)`
+#### `isAuth(req)`
 
-Verifies JWT token validity.
-
-- **Parameters:**
-  - `token` (string): JWT access token
-- **Returns:** `{ isValid: boolean, userId: string | null }`
-
-#### `refreshToken(req, res)`
-
-Generates new access and refresh tokens.
+Verifies access token validity from request cookies.
 
 - **Parameters:**
   - `req` (Request): Request object containing cookies
-  - `res` (Response): Response object to set new refresh token cookie
-- **Returns:** `{ accessToken: string, refreshToken: string }`
+- **Returns:** `{ isValid: boolean, userId: string | null }`
+
+#### `refreshAccessToken(req, res)`
+
+Generates a new access token using the refresh token.
+
+- **Parameters:**
+  - `req` (Request): Request object containing cookies
+  - `res` (Response): Response object to set new access token cookie
+- **Returns:** `{ accessToken: string }`
 - **Throws:** Error if refresh token is invalid or expired
 
 #### `logout(res)`
 
-Clears the refresh token cookie and logs out the user.
+Clears both access and refresh token cookies.
 
 - **Parameters:**
   - `res` (Response): Response object
@@ -150,7 +157,11 @@ import express, { Request, Response } from "express";
 import { createAuth } from "ry-auth";
 
 const app = express();
-const auth = createAuth({ jwtSecret: process.env.JWT_SECRET! });
+const auth = createAuth({
+  jwtAccessTokenSecret: process.env.JWT_ACCESS_SECRET!,
+  jwtRefreshTokenSecret: process.env.JWT_REFRESH_SECRET!,
+  nodeEnv: "dev",
+});
 
 app.post("/register", async (req: Request, res: Response) => {
   try {
@@ -178,6 +189,20 @@ app.post("/login", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/check-auth", async (req: Request, res: Response) => {
+  const { isValid, userId } = await auth.isAuth(req);
+  res.json({ isValid, userId });
+});
+
+app.post("/refresh", async (req: Request, res: Response) => {
+  try {
+    const { accessToken } = await auth.refreshAccessToken(req, res);
+    res.json({ accessToken });
+  } catch (error) {
+    res.status(401).json({ error: (error as Error).message });
+  }
+});
+
 app.post("/logout", (req: Request, res: Response) => {
   auth.logout(res);
   res.json({ message: "Logged out successfully" });
@@ -191,7 +216,11 @@ import fastify from "fastify";
 import { createAuth } from "ry-auth";
 
 const app = fastify();
-const auth = createAuth({ jwtSecret: process.env.JWT_SECRET! });
+const auth = createAuth({
+  jwtAccessTokenSecret: process.env.JWT_ACCESS_SECRET!,
+  jwtRefreshTokenSecret: process.env.JWT_REFRESH_SECRET!,
+  nodeEnv: "dev",
+});
 
 app.post("/register", async (request, reply) => {
   try {
@@ -205,6 +234,19 @@ app.post("/register", async (request, reply) => {
     reply.status(400).send({ error: (error as Error).message });
   }
 });
+
+app.post("/login", async (request, reply) => {
+  try {
+    const { accessToken } = await auth.login(
+      request.body.email,
+      request.body.password,
+      reply
+    );
+    reply.send({ accessToken });
+  } catch (error) {
+    reply.status(401).send({ error: (error as Error).message });
+  }
+});
 ```
 
 ## Architecture
@@ -213,8 +255,8 @@ app.post("/register", async (request, reply) => {
 
 - **AuthService** - Main authentication orchestrator
 - **CookieService** - Secure cookie handling
-- **TokenService** - JWT creation and verification
-- **HashingService** - Password hashing with bcrypt
+- **TokenService** - JWT creation and verification with separate access/refresh secrets
+- **HashingService** - Password hashing with bcrypt (12 salt rounds)
 - **UserAdapter** - Extensible user storage interface
 
 ### Design Pattern
@@ -225,17 +267,35 @@ The module uses a factory pattern (`createAuth`) to provide a clean, dependency-
 
 ✅ **httpOnly Cookies** - Prevents XSS attacks from accessing tokens
 ✅ **Secure Cookies** - Only sent over HTTPS in production
-✅ **SameSite Protection** - CSRF protection with SameSite=Strict
-✅ **Bcrypt Hashing** - Password hashing with salt rounds
+✅ **SameSite Protection** - CSRF protection (Strict in prod, Lax in dev)
+✅ **Bcrypt Hashing** - Password hashing with 12 salt rounds
 ✅ **JWT Expiration** - Configurable token expiration times
-✅ **Refresh Token Rotation** - New refresh tokens on each refresh
+✅ **Separate Token Secrets** - Different secrets for access and refresh tokens
+✅ **Environment-aware** - Automatic secure cookie configuration based on environment
 
 ## Token Expiration
 
-- **Access Token:** 1 hour
-- **Refresh Token:** 7 days
+- **Access Token:** 15 minutes
+- **Refresh Token:** 3 days
 
-Customize by modifying the `auth.ts` file or extending the `TokenService`.
+These are hardcoded in the service but can be customized by extending the `TokenService` class.
+
+## Cookie Configuration
+
+Cookies are automatically configured based on the `nodeEnv` setting:
+
+**Production (`prod`):**
+
+- `Secure`: true (HTTPS only)
+- `SameSite`: none
+- `HttpOnly`: true
+- `Domain`: custom domain required
+
+**Development (`dev`):**
+
+- `Secure`: false (HTTP allowed)
+- `SameSite`: lax
+- `HttpOnly`: true
 
 ## Custom User Adapter
 
@@ -243,19 +303,25 @@ Implement the `UserAdapter` interface to use your own database:
 
 ```typescript
 import { UserAdapter } from "ry-auth";
+import type { User } from "ry-auth";
 
 class DatabaseUserAdapter implements UserAdapter {
-  async findByEmail(email: string) {
+  async findByEmail(email: string): Promise<User | null> {
     // Query your database
+    return db.users.findOne({ email });
   }
 
-  async createUser(user: { email: string; hashedPassword: string }) {
+  async createUser(user: Omit<User, "id">): Promise<User> {
     // Create user in your database
+    return db.users.create(user);
   }
 }
 
 const auth = createAuth({
-  jwtSecret: process.env.JWT_SECRET!,
+  jwtAccessTokenSecret: process.env.JWT_ACCESS_SECRET!,
+  jwtRefreshTokenSecret: process.env.JWT_REFRESH_SECRET!,
+  nodeEnv: "prod",
+  domain: "example.com",
   userAdapter: new DatabaseUserAdapter(),
 });
 ```

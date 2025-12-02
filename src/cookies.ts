@@ -1,29 +1,21 @@
-interface CookieOptions {
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: "Strict" | "Lax" | "None";
-  expires?: Date;
-  path?: string;
-  domain?: string;
-  maxAge?: number;
-}
-
-export interface Request {
-  headers?: Record<string, string | string[] | undefined>;
-  [key: string]: any;
-}
-
-export interface Response {
-  setHeader: (name: string, value: string | string[]) => void;
-  [key: string]: any;
-}
+import type { CookieOptions, Request, Response } from "./types/cookies";
 
 export class CookieService {
   async getCookie(req: Request, cookieName: string) {
-    const cookie = req.headers?.cookie;
-    if (!cookie || typeof cookie !== "string") return undefined;
-    const match = cookie.match(new RegExp("(^| )" + cookieName + "=([^;]+)"));
-    return match ? match[2] : undefined;
+    const cookieHeader = req.headers?.cookie;
+    if (!cookieHeader) return undefined;
+    const header = Array.isArray(cookieHeader)
+      ? cookieHeader.join(";")
+      : cookieHeader;
+    const cookies = header.split(";").map((c) => c.trim());
+    const found = cookies.find((c) => c.startsWith(cookieName + "="));
+    if (!found) return undefined;
+    const raw = found.substring(cookieName.length + 1);
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
   }
 
   async setCookie(
@@ -32,15 +24,31 @@ export class CookieService {
     cookieValue: string,
     options: CookieOptions = {}
   ) {
-    let cookieStr = `${cookieName}=${cookieValue}`;
-    if (options.httpOnly) cookieStr += "; HttpOnly";
+    const value = encodeURIComponent(cookieValue);
+    let cookieStr = `${cookieName}=${value}`;
+    if (options.httpOnly ?? true) cookieStr += "; HttpOnly";
     if (options.secure) cookieStr += "; Secure";
     if (options.sameSite) cookieStr += `; SameSite=${options.sameSite}`;
     if (options.expires)
       cookieStr += `; Expires=${options.expires.toUTCString()}`;
-    if (options.maxAge) cookieStr += `; Max-Age=${options.maxAge}`;
+    if (typeof options.maxAge === "number")
+      cookieStr += `; Max-Age=${options.maxAge}`;
     if (options.path) cookieStr += `; Path=${options.path}`;
     if (options.domain) cookieStr += `; Domain=${options.domain}`;
-    if (res.setHeader) res.setHeader("Set-Cookie", cookieStr);
+
+    const prev =
+      typeof res.getHeader === "function"
+        ? res.getHeader("Set-Cookie")
+        : undefined;
+    if (!prev) {
+      res.setHeader("Set-Cookie", cookieStr);
+      return;
+    }
+
+    if (Array.isArray(prev)) {
+      res.setHeader("Set-Cookie", [...prev, cookieStr]);
+    } else {
+      res.setHeader("Set-Cookie", [String(prev), cookieStr]);
+    }
   }
 }
