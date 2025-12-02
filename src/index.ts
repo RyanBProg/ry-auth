@@ -1,26 +1,22 @@
 import { AuthService } from "./auth";
-import { MemoryUserAdapter } from "./memory-adapter";
 import { HashingService } from "./hashing";
 import { TokenService } from "./tokens";
 import { CookieService } from "./cookies";
-import type { NodeEnv } from "./types/cookies";
+import type { CreateAuthConfig } from "./types/createAuth";
 
-export function createAuth(options: {
-  userAdapter: MemoryUserAdapter;
-  jwtAccessTokenSecret: string;
-  jwtRefreshTokenSecret: string;
-  nodeEnv: NodeEnv;
-  domain?: string;
-}) {
-  if (options.nodeEnv === "prod" && !options.domain) {
+export function createAuth(authConfig: CreateAuthConfig) {
+  if (
+    authConfig.config.nodeEnv === "production" &&
+    !authConfig.cookies.domain
+  ) {
     throw new Error("domain is required when nodeEnv is 'prod'");
   }
 
-  const users = options.userAdapter;
+  const users = authConfig.adapters.userAdapters;
   const hashing = new HashingService();
   const tokens = new TokenService(
-    options.jwtAccessTokenSecret,
-    options.jwtRefreshTokenSecret
+    authConfig.jwt.jwtAccessTokenSecret,
+    authConfig.jwt.jwtRefreshTokenSecret
   );
   const cookies = new CookieService();
 
@@ -29,8 +25,8 @@ export function createAuth(options: {
     hashing,
     tokens,
     cookies,
-    options.nodeEnv,
-    options.domain || ""
+    authConfig.config.nodeEnv,
+    authConfig.cookies.domain || ""
   );
 }
 

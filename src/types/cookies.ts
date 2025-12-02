@@ -1,4 +1,4 @@
-export type NodeEnv = "prod" | "dev";
+export type NodeEnv = "production" | "dev";
 
 export interface CookieOptions {
   httpOnly?: boolean;
