@@ -1,4 +1,4 @@
-import { type User } from "./types";
+import { type User } from "./types/user";
 
 export interface UserAdapter {
   findByEmail(email: string): Promise<User | null>;

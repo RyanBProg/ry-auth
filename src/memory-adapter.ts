@@ -1,4 +1,4 @@
-import { type User } from "./types";
+import { type User } from "./types/user";
 import { type UserAdapter } from "./adapter";
 
 export class MemoryUserAdapter implements UserAdapter {
