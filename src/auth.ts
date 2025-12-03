@@ -12,16 +12,25 @@ export class AuthService {
     private token: TokenService,
     private cookies: CookieService,
     private readonly nodeEnv: NodeEnv,
-    private domain: string
+    private readonly cookieDomain: string
   ) {}
 
   async register(email: string, password: string, res?: Response) {
-    const existing = await this.users.findByEmail(email);
+    const saniEmail = email?.trim() || "";
+    const saniPassword = password?.trim() || "";
+
+    if (!saniEmail) throw new Error("Email is required.");
+    if (!saniPassword) throw new Error("Password is required.");
+
+    const existing = await this.users.findByEmail(saniEmail);
     if (existing) throw new Error("Email already in use");
 
-    const hashedPassword = await this.hashing.hashPassword(password);
+    const hashedPassword = await this.hashing.hashPassword(saniPassword);
 
-    const user = await this.users.createUser({ email, hashedPassword });
+    const user = await this.users.createUser({
+      email: saniEmail,
+      hashedPassword,
+    });
     const accessToken = await this.token.createAccessToken({ id: user.id }, 15);
     const refreshToken = await this.token.createRefreshToken(
       { id: user.id },
@@ -30,19 +39,19 @@ export class AuthService {
 
     if (res) {
       await this.cookies.setCookie(res, "accessToken", accessToken, {
-        secure: this.nodeEnv === "prod",
+        secure: this.nodeEnv === "production",
         httpOnly: true,
-        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        sameSite: this.nodeEnv === "production" ? "none" : "lax",
+        domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
         path: "/",
         maxAge: 60 * 15,
       });
 
       await this.cookies.setCookie(res, "refreshToken", refreshToken, {
-        secure: this.nodeEnv === "prod",
+        secure: this.nodeEnv === "production",
         httpOnly: true,
-        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        sameSite: this.nodeEnv === "production" ? "none" : "lax",
+        domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
         path: "/",
         maxAge: 60 * 60 * 24 * 3,
       });
@@ -52,11 +61,17 @@ export class AuthService {
   }
 
   async login(email: string, password: string, res?: Response) {
-    const existing = await this.users.findByEmail(email);
+    const saniEmail = email?.trim() || "";
+    const saniPassword = password?.trim() || "";
+
+    if (!saniEmail) throw new Error("Email is required.");
+    if (!saniPassword) throw new Error("Password is required.");
+
+    const existing = await this.users.findByEmail(saniEmail);
     if (!existing) throw new Error("No user found");
 
     const isPasswordMatch = await this.hashing.verifyPassword(
-      password,
+      saniPassword,
       existing.hashedPassword
     );
 
@@ -75,19 +90,19 @@ export class AuthService {
 
     if (res) {
       await this.cookies.setCookie(res, "accessToken", accessToken, {
-        secure: this.nodeEnv === "prod",
+        secure: this.nodeEnv === "production",
         httpOnly: true,
-        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        sameSite: this.nodeEnv === "production" ? "none" : "lax",
+        domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
         path: "/",
         maxAge: 60 * 15,
       });
 
       await this.cookies.setCookie(res, "refreshToken", refreshToken, {
-        secure: this.nodeEnv === "prod",
+        secure: this.nodeEnv === "production",
         httpOnly: true,
-        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        sameSite: this.nodeEnv === "production" ? "none" : "lax",
+        domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
         path: "/",
         maxAge: 60 * 60 * 24 * 3,
       });
@@ -98,19 +113,19 @@ export class AuthService {
 
   async logout(res: Response) {
     await this.cookies.setCookie(res, "accessToken", "", {
-      secure: this.nodeEnv === "prod",
+      secure: this.nodeEnv === "production",
       httpOnly: true,
-      sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-      domain: this.nodeEnv === "prod" ? this.domain : undefined,
+      sameSite: this.nodeEnv === "production" ? "none" : "lax",
+      domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
       path: "/",
       maxAge: 0,
     });
 
     await this.cookies.setCookie(res, "refreshToken", "", {
-      secure: this.nodeEnv === "prod",
+      secure: this.nodeEnv === "production",
       httpOnly: true,
-      sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-      domain: this.nodeEnv === "prod" ? this.domain : undefined,
+      sameSite: this.nodeEnv === "production" ? "none" : "lax",
+      domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
       path: "/",
       maxAge: 0,
     });
@@ -152,10 +167,10 @@ export class AuthService {
       );
 
       await this.cookies.setCookie(res, "accessToken", newAccessToken, {
-        secure: this.nodeEnv === "prod",
+        secure: this.nodeEnv === "production",
         httpOnly: true,
-        sameSite: this.nodeEnv === "prod" ? "none" : "lax",
-        domain: this.nodeEnv === "prod" ? this.domain : undefined,
+        sameSite: this.nodeEnv === "production" ? "none" : "lax",
+        domain: this.nodeEnv === "production" ? this.cookieDomain : undefined,
         path: "/",
         maxAge: 60 * 15,
       });
