@@ -92,9 +92,9 @@ Factory function to create an AuthService instance.
 
 - `jwtAccessTokenSecret` (required): Secret key for JWT access token signing
 - `jwtRefreshTokenSecret` (required): Secret key for JWT refresh token signing
-- `nodeEnv` (required): Environment - `"prod"` or `"dev"`
+- `nodeEnv` (required): Environment - `"production"` or `"dev"`
 - `userAdapter` (optional): Custom user adapter (defaults to `MemoryUserAdapter`)
-- `domain` (required if `nodeEnv` is `"prod"`): Domain for secure cookies
+- `domain` (required if `nodeEnv` is `"production"`): Domain for secure cookies
 
 **Returns:** `AuthService` instance
 
@@ -267,7 +267,7 @@ The module uses a factory pattern (`createAuth`) to provide a clean, dependency-
 
 ✅ **httpOnly Cookies** - Prevents XSS attacks from accessing tokens
 ✅ **Secure Cookies** - Only sent over HTTPS in production
-✅ **SameSite Protection** - CSRF protection (Strict in prod, Lax in dev)
+✅ **SameSite Protection** - CSRF protection (Strict in production, Lax in dev)
 ✅ **Bcrypt Hashing** - Password hashing with 12 salt rounds
 ✅ **JWT Expiration** - Configurable token expiration times
 ✅ **Separate Token Secrets** - Different secrets for access and refresh tokens
@@ -284,7 +284,7 @@ These are hardcoded in the service but can be customized by extending the `Token
 
 Cookies are automatically configured based on the `nodeEnv` setting:
 
-**Production (`prod`):**
+**Production (`production`):**
 
 - `Secure`: true (HTTPS only)
 - `SameSite`: none
@@ -320,7 +320,7 @@ class DatabaseUserAdapter implements UserAdapter {
 const auth = createAuth({
   jwtAccessTokenSecret: process.env.JWT_ACCESS_SECRET!,
   jwtRefreshTokenSecret: process.env.JWT_REFRESH_SECRET!,
-  nodeEnv: "prod",
+  nodeEnv: "production",
   domain: "example.com",
   userAdapter: new DatabaseUserAdapter(),
 });

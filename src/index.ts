@@ -9,7 +9,7 @@ export function createAuth(authConfig: CreateAuthConfig) {
     authConfig.config.nodeEnv === "production" &&
     !authConfig.cookies.domain
   ) {
-    throw new Error("domain is required when nodeEnv is 'prod'");
+    throw new Error("domain is required when nodeEnv is 'production'");
   }
 
   const users = authConfig.adapters.userAdapters;
